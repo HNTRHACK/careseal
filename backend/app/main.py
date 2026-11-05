@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from app.auth_routes import router as auth_router
+from app.membership_routes import router as membership_router
 
 
 app = FastAPI(
@@ -45,3 +46,4 @@ def health_check() -> HealthResponse:
     )
 
 app.include_router(auth_router)
+app.include_router(membership_router)
