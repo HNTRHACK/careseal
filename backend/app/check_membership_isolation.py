@@ -1,6 +1,8 @@
 from uuid import UUID, uuid4
 
-from fastapi import Response
+
+from app.authorization import require_organization_role
+from fastapi import HTTPException, Response
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -116,12 +118,124 @@ def main() -> int:
                     db.flush()
 
                     response_a = Response()
+                    
                     memberships_a = get_my_memberships(
                         response=response_a,
                         user=CurrentUser(id=user_a),
                         db=db,
                     )
 
+                    def check_access(
+                        user_id,
+                        organization_id,
+                        role="funder",
+                        kind="ngo",
+                    ):
+                        return require_organization_role(
+                            db=db,
+                            user=CurrentUser(id=user_id),
+                            organization_id=organization_id,
+                            required_role=role,
+                            required_kind=kind,
+                        )
+
+                    def expect_denied(label, **kwargs):
+                        try:
+                            check_access(**kwargs)
+                        except HTTPException as exc:
+                            require(
+                                exc.status_code == 403,
+                                label,
+                            )
+                        else:
+                            raise AssertionError(label)
+
+                    access = check_access(user_a, org_a)
+                    require(
+                        access.user_id == user_a
+                        and access.organization_id == org_a
+                        and access.role == "funder",
+                        "Verified NGO's active funder is authorized",
+                    )
+
+                    expect_denied(
+                        "Another user's organization is denied",
+                        user_id=user_a,
+                        organization_id=org_b,
+                    )
+                    expect_denied(
+                        "Disabled membership is denied",
+                        user_id=user_a,
+                        organization_id=org_disabled,
+                    )
+                    expect_denied(
+                        "Disabled admin role is denied",
+                        user_id=user_a,
+                        organization_id=org_a,
+                        role="admin",
+                    )
+                    expect_denied(
+                        "Unassigned reviewer role is denied",
+                        user_id=user_a,
+                        organization_id=org_a,
+                        role="medical_reviewer",
+                    )
+                    expect_denied(
+                        "Wrong organization kind is denied",
+                        user_id=user_a,
+                        organization_id=org_a,
+                        kind="hospital",
+                    )
+                    expect_denied(
+                        "Unknown organization is denied",
+                        user_id=user_a,
+                        organization_id=uuid4(),
+                    )
+
+                    # An admin-only member does not inherit funder powers.
+                    db.add(
+                        OrgMembership(
+                            id=uuid4(),
+                            organization_id=org_a,
+                            user_id=user_b,
+                            role="admin",
+                            status="active",
+                        )
+                    )
+                    db.flush()
+
+                    expect_denied(
+                        "Active admin does not inherit funder permission",
+                        user_id=user_b,
+                        organization_id=org_a,
+                    )
+
+                    # Remove the temporary admin membership before the
+                    # existing membership-list assertions run.
+                    admin_membership = db.scalars(
+                        select(OrgMembership).where(
+                            OrgMembership.organization_id == org_a,
+                            OrgMembership.user_id == user_b,
+                            OrgMembership.role == "admin",
+                        )
+                    ).one()
+                    db.delete(admin_membership)
+                    db.flush()
+
+                    organization = db.get(Organization, org_a)
+
+                    for status in ("pending", "rejected", "suspended"):
+                        organization.verification_status = status
+                        db.flush()
+
+                        expect_denied(
+                            f"{status.capitalize()} organization is denied",
+                            user_id=user_a,
+                            organization_id=org_a,
+                        )
+
+                    organization.verification_status = "verified"
+                    db.flush()
                     response_b = Response()
                     memberships_b = get_my_memberships(
                         response=response_b,
