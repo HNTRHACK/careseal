@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+from app.auth_routes import router as auth_router
 
 
 app = FastAPI(
@@ -42,3 +43,5 @@ def health_check() -> HealthResponse:
         service="careseal-api",
         version=app.version,
     )
+
+app.include_router(auth_router)
