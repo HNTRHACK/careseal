@@ -1,7 +1,36 @@
+# Environment & Secrets
 .env
 .env.*
+.env.local
 !.env.example
+
+# Local Tools
+tools/
+
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Next.js Build
 .next/
+out/
+dist/
+
+# Python Virtual Environment & Bytecode
 .venv/
+venv/
 __pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Foundry / Solidity
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
